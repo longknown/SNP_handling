@@ -9,10 +9,12 @@ import bs4
 def capture_gene(line):
     '''Short function defined to capture the genes out of the html lines'''
     sp = bs4.BeautifulSoup(str(line))
-    return sp.find('a').string
+    return str(sp.find('a').string)  # to ensure the returned value is of string type
+
 
 def find_gene_loc(gene, genelist_url, user_agent):
     '''Step1 function:
+
     Description: for a given gene symbol, crawl the web to capture the locus names of the gene symbol;
     Usage:
         find_gene_loc(gene, genelist_url, user_agent)
@@ -43,8 +45,77 @@ def find_gene_loc(gene, genelist_url, user_agent):
             genelist.extend(add_gene)
 
     loc_list = [capture_gene(line) for line in genelist]  # to handle the html-hidden gene locus for further gene mining
-
     return loc_list
+
+
+def capture_snp(line):
+    '''similar to capture_gene'''
+
+    soup = bs4.BeautifulSoup(str(line))
+    snp = str(soup.td.text)[:-5]
+    return snp
+
+
+def get_special_snp(loc_soup):
+    '''build to capture special SNPs
+
+    for each passed web-page, capture the corresponding special SNPs including NS SNP & initial/stop codon
+    '''
+
+    special_snp = []
+    if loc_soup.find('h2').next_sibling.next_sibling.name == 'div':  # in case of those locus without any SNPs ???debuging problem
+        return special_snp
+    else:
+        ns_symbol = 'text\-(info|danger)'  # text-info & text-danger are the symbols for special SNPs
+        snp = loc_soup.find('table', attrs={'class': 'itable'}).find_all('tr', attrs={'class': re.compile(ns_symbol)})
+        if snp:
+            special_snp = [capture_snp(line) for line in snp]
+
+        return special_snp
+
+
+def capture_percent(perc):
+    '''the same type as capture_*
+    but the returned value is a float number, which represents the number of percentage.
+    '''
+
+    p_soup = bs4.BeautifulSoup(str(perc))
+    percentage = float(p_soup.td.next_sibling.next_sibling.string[1:-2])  # the text value in the table is u'\rXX% '
+    return percentage
+
+
+def test_snp(snp):
+    '''to test whether a snp is dictinct between indica & japonica
+    the cut-off distinction is 40% (percentage: |indica - japonica| >= 40%)
+    return value is a boolen, True for distinct, False for non-distinct
+    '''
+
+    snp_url = 'http://ricevarmap.ncpgr.cn/snp/?'
+    payload = {'snp_id': snp}
+    user_agent = {'User-agent': 'chrome'} # to be masked as a chrome browser
+    page = req.get(snp_url, params=payload, headers=user_agent)
+    page_soup = bs4.BeautifulSoup(page.text)
+    cut_off = 40
+
+    distinct = False
+
+    percent = page_soup.find('table', attrs={'class': 'imagetable'}).tbody.find_all('tr')
+    indica = capture_percent(percent[1])
+    japonica = capture_percent(percent[2])
+    if abs(indica-japonica) >= cut_off:
+        distinct = True
+    return distinct
+
+
+def write2file(loc_soup, special_snp, distinct_snp):
+    '''
+    :param loc_soup: the bs4-ed text
+    :param special_snp:
+    :param distinct_snp:
+    write various data to local disk
+    '''
+    pass
+
 
 
 ### Main Program ###
@@ -53,11 +124,21 @@ baseurl = 'http://ricevarmap.ncpgr.cn/'
 genelist_url = baseurl + 'snp_in_gene/?'
 
 # Following block is the retrieve of gene_list according to gene names or symbols
-user_agent = {'User-agent': 'chrome'} # to be masked as a chrome browser
+user_agent = {'User-agent': 'chrome'}  # to be masked as a chrome browser
 
 # Step1: Find out the numerous gene locus
 loc_list = []
 loc_list = find_gene_loc(gene, genelist_url, user_agent)
 
 # Step2: Screen the Non-Synonymous SNPs
+for loc in loc_list:
+    payload = {'gene_ids': loc}
+    loc_r = req.get(genelist_url, params=payload, headers=user_agent)
+    loc_soup = bs4.BeautifulSoup(loc_r.text)
+    special_snp = get_special_snp(loc_soup)
+    distinct_snp = filter(test_snp, special_snp)  # Step3: Screen out SNPs with distinct distribution between indica & japonica
+
+    if distinct_snp:
+        print distinct_snp
+        write2file(loc_soup, special_snp, distinct_snp)
 
