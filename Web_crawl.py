@@ -28,8 +28,8 @@ def find_gene_loc(gene, genelist_url, user_agent):
     soup = bs4.BeautifulSoup(genelist_r.text)
 
     # check whether there's resulting MSU genes for the input gene names
-    if soup.find('h2').next_sibling.next_sibling.name == 'div':  # the resulting web site shows when there's no resulting genes, the next to the next sibling of h2 would be 'div' other than 'p'
-        print "Sorry, we can't find any gene function or gene symbol matching the keyword."
+    if not soup.find('table', attrs={'class': re.compile('table-striped')}):
+        print "Sorry, we can't find any gene function or gene symbol matching the keyword.\n"
         os._exit(0)
     elif not soup.find(attrs={'class': 'current page'}).parent.find_all('a'):  #the following 2 options are for distinguish whether multiple pages are returned,
         genelist = soup.find('table', attrs={'class': re.compile('table-striped')}).find_all('a')
@@ -63,7 +63,7 @@ def get_special_snp(loc_soup):
     '''
 
     special_snp = []
-    if loc_soup.find('h2').next_sibling.next_sibling.name == 'div':  # in case of those locus without any SNPs ???debuging problem
+    if not loc_soup.find('table', attrs={'class': 'itable'}):  # in case of those locus without any SNPs
         return special_snp
     else:
         ns_symbol = 'text\-(info|danger)'  # text-info & text-danger are the symbols for special SNPs
@@ -108,13 +108,36 @@ def test_snp(snp):
 
 
 def write2file(loc_soup, special_snp, distinct_snp):
+    '''write various data to local disk including image of SNPs, table with special notes
+
+    capture table from web-page other than merely download the csv file(avoid more net-working connect)
+    directory tree:
+    └── gene
+        ├── LOC1
+        │   ├── 1.csv
+        │   └── 1.png
+        ├── LOC2
+        │   ├── 2.csv
+        │   └── 2.png
+        ├── LOC3
+        │   ├── 3.csv
+        │   └── 3.png
+        └── LOC4
+            ├── 4.csv
+            └── 4.png
     '''
-    :param loc_soup: the bs4-ed text
-    :param special_snp:
-    :param distinct_snp:
-    write various data to local disk
-    '''
-    pass
+
+    # capture table from web-page
+    origin_list = loc_soup.find('table', attrs={'class': 'itable'}).find_all('tr')
+    th_soup = bs4.BeautifulSoup(origin_list[0])  # special handling for the table head(th)
+    th_n = str(th_soup.text) + 'Special or NOT\nDistinct or NOT'
+    th = th_n[1:].replace('\n', '\t')
+    for item in origin_list[1:]:
+        item_soup = bs4.BeautifulSoup(str(item))
+        tr_n = str(item_soup.text)
+        snp = tr_n.split()[0]
+
+
 
 
 
@@ -130,15 +153,28 @@ user_agent = {'User-agent': 'chrome'}  # to be masked as a chrome browser
 loc_list = []
 loc_list = find_gene_loc(gene, genelist_url, user_agent)
 
+gene_dir = '../' + gene  # to create a new directory for each gene, path: ../gene
+exist_path = os.path.exists(gene_dir)
+if not exist_path:
+    os.mkdir(gene_dir)
+
+
 # Step2: Screen the Non-Synonymous SNPs
+distinct_loc = []  # to store those loc_name with distinct special SNPs
 for loc in loc_list:
     payload = {'gene_ids': loc}
     loc_r = req.get(genelist_url, params=payload, headers=user_agent)
     loc_soup = bs4.BeautifulSoup(loc_r.text)
     special_snp = get_special_snp(loc_soup)
-    distinct_snp = filter(test_snp, special_snp)  # Step3: Screen out SNPs with distinct distribution between indica & japonica
+    distinct_snp = filter(test_snp, special_snp)  # Step3:\
+    #  Screen out SNPs with distinct distribution between indica & japonica
 
     if distinct_snp:
-        print distinct_snp
-        write2file(loc_soup, special_snp, distinct_snp)
+        distinct_loc.append(loc)
 
+        loc_dir = gene_dir + '/loc'
+        exist_path = os.path.exists(loc_dir)
+        if not exist_path(loc_dir):
+            os.mkdir(loc_dir)
+        print distinct_snp
+        write2file(loc_soup, special_snp, distinct_snp, loc_dir)
