@@ -5,6 +5,10 @@ import sys
 import re
 import requests as req
 import bs4
+import Image
+from StringIO import StringIO
+
+
 
 def capture_gene(line):
     '''Short function defined to capture the genes out of the html lines'''
@@ -107,35 +111,36 @@ def test_snp(snp):
     return distinct
 
 
-def write2file(loc_soup, special_snp, distinct_snp):
-    '''write various data to local disk including image of SNPs, table with special notes
-
-    capture table from web-page other than merely download the csv file(avoid more net-working connect)
-    directory tree:
-    └── gene
-        ├── LOC1
-        │   ├── 1.csv
-        │   └── 1.png
-        ├── LOC2
-        │   ├── 2.csv
-        │   └── 2.png
-        ├── LOC3
-        │   ├── 3.csv
-        │   └── 3.png
-        └── LOC4
-            ├── 4.csv
-            └── 4.png
+def get_table(loc_soup, special_snp, distinct_snp):
+    '''From the web-page, capture the table out, with special notes for distinct & biological important meanings
     '''
 
-    # capture table from web-page
+    table_content = ''
     origin_list = loc_soup.find('table', attrs={'class': 'itable'}).find_all('tr')
-    th_soup = bs4.BeautifulSoup(origin_list[0])  # special handling for the table head(th)
+    th_soup = bs4.BeautifulSoup(str(origin_list[0]))  # special handling for the table head(th)
     th_n = str(th_soup.text) + 'Special or NOT\nDistinct or NOT'
     th = th_n[1:].replace('\n', '\t')
+    table_content += th + '\n'
+
     for item in origin_list[1:]:
         item_soup = bs4.BeautifulSoup(str(item))
         tr_n = str(item_soup.text)
-        snp = tr_n.split()[0]
+        tr = tr_n[1:].replace('\n', '\t').replace('\r', '')
+        snp = tr_n.split()[0][:-5]
+
+        print special_snp
+        print snp
+        if snp in special_snp:
+            tr += '\t*'
+        else:
+            tr += '\t '
+        if snp in distinct_snp:
+            tr += '\t*'
+        else:
+            tr += '\t '
+        table_content += tr + '\n'
+
+    return table_content
 
 
 
@@ -161,6 +166,7 @@ if not exist_path:
 
 # Step2: Screen the Non-Synonymous SNPs
 distinct_loc = []  # to store those loc_name with distinct special SNPs
+csv_content = ''  # to store an integrated table with TAB
 for loc in loc_list:
     payload = {'gene_ids': loc}
     loc_r = req.get(genelist_url, params=payload, headers=user_agent)
@@ -170,11 +176,28 @@ for loc in loc_list:
     #  Screen out SNPs with distinct distribution between indica & japonica
 
     if distinct_snp:
-        distinct_loc.append(loc)
+        # Store the image first
+        img_url = str(loc_soup.img.attrs['src'])  # the SNP distribution image url
+        img_r = req.get(img_url, headers=user_agent)
+        img_path = gene_dir + '/' + loc + '.png'
+        img = Image.open(StringIO(img_r.content))
+        img.save(img_path)
 
-        loc_dir = gene_dir + '/loc'
-        exist_path = os.path.exists(loc_dir)
-        if not exist_path(loc_dir):
-            os.mkdir(loc_dir)
+        distinct_loc.append(loc)
+        csv_content = csv_content + loc + '\n'
+
         print distinct_snp
-        write2file(loc_soup, special_snp, distinct_snp, loc_dir)
+        table_content = get_table(loc_soup, special_snp, distinct_snp)
+        csv_content += table_content
+csv_path = gene_dir + '/' + gene + '.csv'
+loc_csv_path = gene_dir + '/' + 'loc.csv'
+
+# Write the table to local disk
+with open(csv_path, 'wt') as f1:
+    f1.write(csv_content)
+    f1.close()
+with open(loc_csv_path, 'wt') as f2:
+    for snp in distinct_snp:
+        f2.write('\n')
+        f2.write(snp)
+    f2.close()
