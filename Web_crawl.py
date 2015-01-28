@@ -9,7 +9,6 @@ import Image
 from StringIO import StringIO
 
 
-
 def capture_gene(line):
     '''Short function defined to capture the genes out of the html lines'''
     sp = bs4.BeautifulSoup(str(line))
@@ -38,7 +37,7 @@ def find_gene_loc(gene, genelist_url, user_agent):
     # check whether there's resulting MSU genes for the input gene names
     if not soup.find('table', attrs={'class': re.compile('table-striped')}):
         print "Sorry, we can't find any gene function or gene symbol matching the keyword.\n"
-        os._exit(0)
+        os._exit(1)
     elif not soup.find(attrs={'class': 'current page'}).parent.find_all('a'):  #the following 2 options are for distinguish whether multiple pages are returned,
         genelist = soup.find('table', attrs={'class': re.compile('table-striped')}).find_all('a')
     else:
@@ -138,8 +137,6 @@ def get_table(loc_soup, special_snp, distinct_snp):
         tr = tr_n[1:].replace('\n', '\t').replace('\r', '')
         snp = tr_n.split()[0][:-5]
 
-        print special_snp
-        print snp
         if snp in special_snp:
             tr += '\t*'
         else:
@@ -153,10 +150,27 @@ def get_table(loc_soup, special_snp, distinct_snp):
     return table_content
 
 
-
+def crawl_help():
+    print '''Description: The program crawls the SNP website: http://ricevarmap.ncpgr.cn/
+Input parameter: gene symbol name or gene locus
+Output files: If successful,
+    1) a SNP distribution map
+    2) a table contains SNPs with special notation and dictinction between 2 cultivals
+    3) a table contains loc name of the gene symbol
+    would be stored on the local disk! path_way = '../{gene_name}'
+    '''
+    os._exit(1)
 
 
 ### Main Program ###
+if len(sys.argv) < 2:
+    print './Crawl.py --help for program help!'
+    os._exit(1)
+elif sys.argv[1].startswith('--'):
+    options = sys.argv[1][2:]
+    if options == 'help':
+        crawl_help()
+
 gene = str(sys.argv[1]).upper()
 baseurl = 'http://ricevarmap.ncpgr.cn/'
 genelist_url = baseurl + 'snp_in_gene/?'
@@ -198,6 +212,7 @@ for loc in loc_list:
         img_path = gene_dir + '/' + loc + '.png'
         img = Image.open(StringIO(img_r.content))
         img.save(img_path)
+        print 'SNP distribution image of ' + loc + 'is stored...'
 
         distinct_loc.append(loc)
         csv_content = csv_content + loc + '\n'
@@ -217,3 +232,4 @@ with open(loc_csv_path, 'wt') as f2:
         f2.write('\n')
         f2.write(snp)
     f2.close()
+print 'Table containing gene locs & their special SNPs is stored locally.'
