@@ -26,7 +26,11 @@ def find_gene_loc(gene, genelist_url, user_agent):
     '''
 
     payload = {'gene_func': gene}
-    genelist_r = req.get(genelist_url, params=payload, headers=user_agent)
+    try:
+        genelist_r = req.get(genelist_url, params=payload, headers=user_agent)
+    except Exception as e:
+        print('Network Exception:', e)
+
 
     # to handle the retrieved web-page using bs4
     soup = bs4.BeautifulSoup(genelist_r.text)
@@ -43,7 +47,10 @@ def find_gene_loc(gene, genelist_url, user_agent):
         for i in range(1, page_number+1):  # Recursively handle each web page
             genelist_url = baseurl + 'snp_in_gene/?'
             payload['page'] = str(i)
-            genelist_r = req.get(genelist_url, params=payload, headers=user_agent)
+            try:
+                genelist_r = req.get(genelist_url, params=payload, headers=user_agent)
+            except Exception as e:
+                print('Network Exception:', e)
             soup = bs4.BeautifulSoup(genelist_r.text)
             add_gene = soup.find('table', attrs={'class': re.compile('table-striped')}).find_all('a')
             genelist.extend(add_gene)
@@ -97,7 +104,10 @@ def test_snp(snp):
     snp_url = 'http://ricevarmap.ncpgr.cn/snp/?'
     payload = {'snp_id': snp}
     user_agent = {'User-agent': 'chrome'} # to be masked as a chrome browser
-    page = req.get(snp_url, params=payload, headers=user_agent)
+    try:
+        page = req.get(snp_url, params=payload, headers=user_agent)
+    except Exception as e:
+        print('Network Exception:', e)
     page_soup = bs4.BeautifulSoup(page.text)
     cut_off = 40
 
@@ -147,7 +157,7 @@ def get_table(loc_soup, special_snp, distinct_snp):
 
 
 ### Main Program ###
-gene = str(sys.argv[1])
+gene = str(sys.argv[1]).upper()
 baseurl = 'http://ricevarmap.ncpgr.cn/'
 genelist_url = baseurl + 'snp_in_gene/?'
 
@@ -169,7 +179,10 @@ distinct_loc = []  # to store those loc_name with distinct special SNPs
 csv_content = ''  # to store an integrated table with TAB
 for loc in loc_list:
     payload = {'gene_ids': loc}
-    loc_r = req.get(genelist_url, params=payload, headers=user_agent)
+    try:
+        loc_r = req.get(genelist_url, params=payload, headers=user_agent)
+    except Exception as e:
+        print('Network Exception:', e)
     loc_soup = bs4.BeautifulSoup(loc_r.text)
     special_snp = get_special_snp(loc_soup)
     distinct_snp = filter(test_snp, special_snp)  # Step3:\
@@ -178,7 +191,10 @@ for loc in loc_list:
     if distinct_snp:
         # Store the image first
         img_url = str(loc_soup.img.attrs['src'])  # the SNP distribution image url
-        img_r = req.get(img_url, headers=user_agent)
+        try:
+            img_r = req.get(img_url, headers=user_agent)
+        except Exception as e:
+            print('Network Exception:', e)
         img_path = gene_dir + '/' + loc + '.png'
         img = Image.open(StringIO(img_r.content))
         img.save(img_path)
@@ -197,7 +213,7 @@ with open(csv_path, 'wt') as f1:
     f1.write(csv_content)
     f1.close()
 with open(loc_csv_path, 'wt') as f2:
-    for snp in distinct_snp:
+    for snp in distinct_loc:
         f2.write('\n')
         f2.write(snp)
     f2.close()
